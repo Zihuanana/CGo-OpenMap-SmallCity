@@ -3,7 +3,7 @@
  */
 
 
-const CACHE_NAME = 'cgo-openmap-v261107.190000';
+const CACHE_NAME = 'cgo-openmap-v261107.210000';
 // 地图瓦片专用缓存：与静态资源版本无关，激活新版本时需保留
 const TILE_CACHE_NAME = 'map-tiles-cache';
 const ASSETS_TO_CACHE = [
@@ -826,7 +826,14 @@ async function precacheAll(cache) {
         // 容错口径不变：单个非核心文件失败只告警、不阻断 SW 激活
         await Promise.allSettled(batch.map(async (url) => {
             try {
-                await cache.add(url);
+                // 关键：必须绕过 HTTP 缓存重新取，否则 cache.add() 会把浏览器缓存里的
+                // 旧文件原样存进新 CACHE_NAME，表现就是"版本号跳了但页面没变"。
+                const resp = await fetch(url, { cache: 'reload', credentials: 'same-origin' });
+                if (resp && (resp.ok || resp.type === 'opaque')) {
+                    await cache.put(url, resp);
+                } else {
+                    console.warn('[SW] 预缓存单项跳过:', url, resp && resp.status);
+                }
             } catch (err) {
                 console.warn('[SW] 预缓存单项跳过:', url, err);
             }
